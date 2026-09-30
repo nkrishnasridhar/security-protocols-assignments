@@ -1,0 +1,79 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{verbatim}
+\usepackage{stmaryrd}
+%\usepackage{bussproofs}
+\usepackage{mathabx}
+\usepackage{color}
+\usepackage{tikz}
+\usetikzlibrary {automata,positioning}
+
+\newcommand{\setenc}[1]{\llparenthesis #1 \rrparenthesis}
+\newcommand{\set}[1]{\{#1\}}
+\newcommand{\tuple}[1]{\langle #1\rangle}
+\newcommand{\true}{\texttt{true}}
+\newcommand{\false}{\texttt{false}}
+\renewcommand{\diamond}{\lozenge} %%\diamondsuit
+\newcommand{\Next}{\ovoid} %{\circ}
+\newcommand{\Nat}{\mathbb{N}}
+\newcommand{\sem}[1]{\llbracket #1\rrbracket}
+\newtheorem{property}{Property.}
+
+\title{COSC437 Security Protocols: Assignment 2}
+\author{Name: Navaneethakrishna Sridhar \\ Student ID: 12590145}
+\date{1 Sep 2026}
+
+\begin{document}
+
+\maketitle
+
+\paragraph{The model.}
+I put the model in \texttt{bwbakery.tla}. It is Algorithm~2 from~\cite{taubenfeld}, for three processes, in PlusCal, then translated into the Toolbox. Same shape as the week~5 Peterson demo: \texttt{process (P \textbackslash in Procs)} inside \texttt{ncs: while (TRUE)}, with \texttt{N <- 3} and \texttt{Procs == 1..N} for the paper's $1..n$.
+
+Shared variables are the ones from the paper: \texttt{color}, \texttt{choosing}, and the two halves of a coloured ticket, \texttt{mycolor} and \texttt{number}. I split those two because line~2 writes the colour and line~3 writes the number. Labels follow the paper: \texttt{e1}--\texttt{e4} doorway (lines~1--4), \texttt{e5}--\texttt{e10} waiting loop (lines~5--10), \texttt{cs} line~11, \texttt{x12}/\texttt{x13} exit. \texttt{choosing} and \texttt{number} start at \texttt{FALSE} and $0$. I left \texttt{color} and \texttt{mycolor} non-deterministic, because~\cite{taubenfeld} says the initials do not matter.
+
+Same-colour tickets use Lamport's pair order~\cite{lamport}, same as week~5: $(a,b)<(c,d)$ if $a<c$, or $a=c$ and $b<d$. Different colours: the smaller ticket is the one that is not the current \texttt{color} bit, so I kept the \texttt{if} on line~7. Line~3 is one atomic \texttt{Max} (the paper reads tickets one at a time; this is how week~5 writes the bakery maximum). No fairness on \texttt{ncs}, so a process can sit in its non-critical section forever (Dijkstra).
+
+\paragraph{Mutex and Liveness.}
+\begin{verbatim}
+Mutex == [] \A i, k \in Procs :
+           (i # k) => ~ ((pc[i] = "cs") /\ (pc[k] = "cs"))
+Liveness == \A i \in Procs :
+              []((pc[i] = "e1") => <>(pc[i] = "cs"))
+\end{verbatim}
+\texttt{Mutex} is the Peterson formula over three processes. \texttt{Liveness} uses \texttt{e1} because line~1 is when they show they want the CS. I did not write $\Box\diamond(\texttt{pc}[i]=\text{``cs''})$, because then they would also have to leave \texttt{ncs}.
+
+TLC with \texttt{N <- 3} and \texttt{FairSpec} finished with no error ($992{,}752$ generated, $346{,}870$ distinct, diameter $103$). Both properties hold, it did not deadlock, and the \texttt{TypeOK} invariant confirms \texttt{number} never leaves \texttt{0..N} --- the bounded ticket space.
+
+\paragraph{Fairness.}
+\texttt{Mutex} is safety (week~5): if two processes are in \texttt{cs} together, a finite prefix already shows it. Fairness only talks about infinite runs, so it does not matter for Mutex. On the bare \texttt{Spec} (no $WF$/$SF$) TLC did not report a Mutex error.
+
+\texttt{Liveness} is liveness, and without fairness it fails. \texttt{[][Next]\_vars} always lets the system stutter, so an enabled action can just never happen. TLC says \texttt{Liveness} is \emph{violated}. Last real state: $\texttt{pc}=\tuple{\texttt{e7},\texttt{e6},\texttt{e9}}$ (all three still waiting), then \texttt{Stuttering}.
+
+I put fairness below the translation:
+\begin{verbatim}
+Active(self) == e1(self) \/ ... \/ x13(self)
+FairSpec == Spec /\ \A self \in Procs : WF_vars(Active(self))
+\end{verbatim}
+\texttt{Active} is the process without \texttt{ncs}. Peterson puts $\texttt{SF\_vars}(P(0))\wedge\texttt{SF\_vars}(P(1))$ on the whole process, which is wrong here: \texttt{ncs} is always enabled, so fairness on $P(\textit{self})$ would force processes out of the remainder. $WF$ on \texttt{Active} still lets them sit in \texttt{ncs}, but once they do line~1 they have to keep going. $WF$ was enough; I did not need $SF$.
+
+\paragraph{If one process breaks down.}
+I put this in \texttt{bwbakeryfail.tla}, which \texttt{EXTENDS bwbakery}. A failed process goes to \texttt{pc[i] = "crashed"}. Nothing in Algorithm~2 is enabled from that label, so it takes no more steps. At most one crash, and no fairness on crashing. \texttt{MutexF} is the same as Mutex. \texttt{LivenessF} is Liveness but also allows \texttt{pc[i] = "crashed"}, so the one that dies is excused.
+
+The answer depends on what you can still read from the crashed process.
+
+\textbf{SpecZero} (same assumption as~\cite{lamport}): crash zeros \texttt{choosing[i]} and \texttt{number[i]}. TLC: no error ($2{,}547{,}516$ generated, $604{,}348$ distinct). Mutex and liveness still hold for the remaining two.
+
+\textbf{SpecFreeze}: registers stay as they were. TLC did not report a \texttt{MutexF} error, but \texttt{LivenessF} is \emph{violated}: process~$2$ crashes with $\texttt{choosing}[2]=\texttt{TRUE}$, process~$1$ gets to line~6 with $j=2$ ($\texttt{pc}=\tuple{\texttt{e6},\texttt{crashed},\texttt{ncs}}$), then \texttt{Stuttering}. If someone dies in the doorway, \texttt{choosing} stays up and anyone at line~6 waits forever~\cite{lamport}.
+
+So the remaining two only keep both properties if a failed process's registers eventually read as zero.
+
+\begin{thebibliography}{9}
+\bibitem{lamport} L.~Lamport. A New Solution of Dijkstra's Concurrent Programming Problem. \emph{Communications of the ACM}, 17(8), 1974.
+\bibitem{taubenfeld} G.~Taubenfeld. The Black-White Bakery Algorithm and Related Bounded-Space, Adaptive, Local-Spinning and FIFO Algorithms. \emph{International Symposium on Distributed Computing}, 56--70, 2004.
+\end{thebibliography}
+
+\end{document}
