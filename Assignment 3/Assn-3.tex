@@ -1,0 +1,196 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{verbatim}
+\usepackage{stmaryrd}
+\usepackage{mathabx}
+
+\newcommand{\setenc}[1]{\llparenthesis #1 \rrparenthesis}
+\newcommand{\set}[1]{\{#1\}}
+\newcommand{\tuple}[1]{\langle #1\rangle}
+\newcommand{\true}{\texttt{true}}
+\newcommand{\false}{\texttt{false}}
+\renewcommand{\diamond}{\lozenge} 
+\newcommand{\Next}{\ovoid} %{\circ}
+\newcommand{\sym}[1]{\texttt{#1}}
+
+
+% title of this article/assignment
+\title{COSC437 Security Protocols: Assignment 3}
+\author{Name: Navaneethakrishna Sridhar \\ Student ID: 12590145}
+\date{Due 4 Oct 2026}
+
+\begin{document}
+
+\maketitle
+
+\paragraph{Question $1$. ($2$ marks)}
+Suppose a distributed system consists of 5 processes (acceptors): $A_1, A_2, A_3, A_4,$ and $A_5$, running the Paxos protocol to achieve consensus on a value.
+\begin{enumerate}
+    \item Suppose proposer $P_1$ (remember $P_1$ may be one of the acceptors) initiates Phase 1 with ballot $n = 10$ and receives promises from $A_1, A_2,$ and $A_3$. None of these acceptors have previously accepted any value. $P_1$ then sends Propose(10, $Value_A$). Before $P_1$ completes Phase 2, another proposer $P_2$ starts Phase 1 with ballot $n = 20$ and receives promises from $A_3, A_4,$ and $A_5$. What values and ballot numbers will $A_3, A_4,$ and $A_5$ send back in their Promise messages to $P_2$? 
+    \item Based on $P_2$'s received promises, what value is $P_2$ forced to propose in Phase 2? Explain why.
+\end{enumerate}
+
+\paragraph{Answer.}
+There are five acceptors, so this is the week~6 setup $2f+1 = 5$, and a quorum is $f+1 = 3$. Both proposers have three promises, so both have a quorum. Each acceptor keeps $\tuple{n_A, c_A, v_A}$: $n_A$ is the highest ballot it has replied to so far, $c_A$ the highest ballot it has accepted, and $v_A$ the value it accepted. When it replies to a prepare it sets $n_A$ to that ballot. If it has never accepted a value it sends $\mathrm{Promise}(n, A)$. If it has, it sends $\mathrm{Promise}(n, c_A, v_A, A)$.
+
+I am assuming $P_1$'s $\mathrm{Propose}(10, Value_A)$ reaches $A_3$, and $A_3$ accepts it, before $A_3$ answers $P_2$'s prepare for ballot $20$. $A_4$ and $A_5$ have never accepted anything. The question does not actually say the propose got there, and week~6 is asynchronous, so this is an assumption. It is the version where $P_2$ is forced to a definite value.
+
+\begin{enumerate}
+    \item After $A_3$ promised ballot $10$, $n_{A_3}$ is $10$ and it still has not accepted anything. In Phase~2 it accepts when the ballot is at least $n_A$, so it accepts $(10, Value_A)$ and sets $c_{A_3} = 10$ and $v_{A_3} = Value_A$. Ballot $20$ is higher than $n_{A_3}$, and it has now accepted a value, so it replies
+    \[
+        \mathrm{Promise}(20,\ 10,\ Value_A,\ A_3)
+    \]
+    and then sets $n_{A_3} = 20$. So the promise ballot is $20$, and it reports the earlier ballot $10$ with value $Value_A$.
+
+    $A_4$ and $A_5$ have no accepted ballot and no accepted value, and $20$ is higher than $n_A$ for each of them. They reply
+    \[
+        \mathrm{Promise}(20,\ A_4)
+        \qquad\text{and}\qquad
+        \mathrm{Promise}(20,\ A_5).
+    \]
+    So those two are just ballot $20$, with nothing accepted before.
+
+    \item $P_2$ has three promises, so it can go into Phase~2. From the promises it has, it has to take the value of the highest-numbered proposal anyone already accepted, and it only gets to use its own value if none of them reports an acceptance. The only report is $(10, Value_A)$ from $A_3$, so it has to propose $Value_A$:
+    \[
+        \mathrm{Propose}(P_2,\ 20,\ Value_A).
+    \]
+    $P_1$ has not finished Phase~2, so it does not have $f+1$ accepts yet, and $Value_A$ is not the chosen value. The rule still fixes what $P_2$ proposes, because one reported acceptance in the quorum is enough. The lecture's safety argument is separate from that: if an earlier ballot had already been accepted by $f+1$ acceptors, every later quorum would include someone who reports it, and the later proposer would have to repeat that value.
+\end{enumerate}
+
+\bigskip
+
+\paragraph{Question $2$. ($2$ marks)}
+In the Bitcoin protocol run, suppose a dishonest client attempts a double-spending attack by broadcasting a transaction $TX_a$ to a merchant (paying for goods) while secretly mining an alternate private chain that contains $TX_b$ (spending the same UTXO back to themselves). 
+\begin{enumerate}
+    \item Under what condition regarding total network hashing power can the attacker guarantee that the network will eventually adopt their alternate chain containing $TX_b$? 
+    \item Differentiate between a standard double-spending attack and a Goldfinger attack in terms of the attacker's ultimate motivation. 
+
+\end{enumerate}
+
+\paragraph{Answer.}
+\begin{enumerate}
+    \item The network keeps whichever chain is longest. The attacker can be sure the private chain (the one with $TX_b$) eventually becomes that chain when their hashing power is greater than the rest of the network put together, so a strict majority of the total hashrate. Their chain then grows faster than the public one, so it eventually overtakes, and the network switches to the branch that has $TX_b$ and drops $TX_a$.
+
+    The week~7 double-spending slide only says she has a good chance once her hashing power is more than the rest of the network, and the Goldfinger slide says $51\%$. The question wants a condition that guarantees the network eventually adopts the private chain. With the longest-chain rule, that is a strict majority. At exactly half the hashrate, it is not guaranteed.
+
+    \item In the double-spend, the attacker pays the merchant with $TX_a$ and, on the private chain, spends the same UTXO back to himself in $TX_b$. What he wants is the goods and the coins. A Goldfinger attack is a miner or a pool that gets to a majority of the hashrate. On the week~7 slide, that lets you double-spend whenever you want, and the point of the attack is to bring the cryptocurrency network down.
+\end{enumerate}
+
+\bigskip
+
+\paragraph{Question $3$. (A certified email protocol)}
+Certified Email (CEM) protocols, as an extension of regular email services, require that both senders and receivers be responsible for their roles in the email services. That means, if a protocol successfully runs to the end, neither the sender can deny the dispatch of the email that was received by the receiver, nor can the receiver deny the receipt. The following protocol allows Alice ($A$) to send a certified email to Bob ($B$), and in addition, we have a trusted third party ($T$) that helps to resolve any dispute. We assume users' public keys are known to everyone, and will not be faked or compromised throughout a protocol execution. The protocol is given in the Alice-Bob notation as follows.
+
+\begin{itemize}
+\item[] ($CEM_{1}$)\ $A\rightarrow T: A; B$ 
+\item[] ($CEM_{2}$)\ $T\rightarrow A: (k).\ (sid).\ sid;\setenc{A;B;sid}^a_{K^{-1}_T};\setenc{k}^a_{K_A}$
+\item[] ($CEM_{3}$)\ $A\rightarrow B: A; B; T; sid; h(k);\setenc{M}^s_{k};\sym{EOO}_M;\setenc{A;B;sid}^a_{K^{-1}_T}$
+\item[] ($CEM_{4}$)\ $B\rightarrow A: \sym{EOR}_M$
+\item[] ($CEM_{5}$)\ $A\rightarrow B: k$
+\item[] ($CEM_{6}$)\ $B\rightarrow A: \sym{EOR}_k$
+\end{itemize}
+
+\noindent In the above protocol, we assume the hash function $h$ is secure and publicly known. For any term $M$, $\setenc{M}^a_{K^{-1}_X}$ is $M$ that is digitally signed by $X$, and $\setenc{M}^a_{K_Y}$ is $M$ encrypted with $Y$'s public key. $\setenc{M}^s_k$ is encrypted $M$ with key $k$ by using a symmetric cipher known to all. For the short-named messages,
+\begin{itemize}
+    \item[-] $\sym{EOO}_M = \setenc{B; T; sid; h(k); \setenc{M}^s_{k}}^a_{K_A^{-1}}$, the \emph{non-repudiable evidence-of-origin} for the message $M$ sent from $A$;
+    \item[-] $\sym{EOR}_M = \setenc{\sym{EOO}_M}^a_{K_B^{-1}}$, the \emph{non-repudiable evidence-of-receipt} for the message $M$ sent from $B$;
+    \item[-] $\sym{EOR}_k = \setenc{A;k;\setenc{M}^s_{k}}^a_{K_B^{-1}}$, the \emph{non-repudiable evidence-of-receipt} for the symmetric cipher key $k$ sent from $B$;
+\end{itemize}
+
+To initialise a session, Alice requests a session key $k$ and session ID $sid$ from the trusted third party $T$. Then Alice sends out a message to Bob in $CEM_{3}$. Bob checks the correctness of the signature on both $\sym{EOO}_M$ and $\setenc{A;B;sid}^a_{K^{-1}_T}$. If both are correct, Bob then commits himself to receiving the email by sending out $\sym{EOR}_M$. If correct, Alice will send out the session key $k$ to Bob. Finally, Bob checks whether the key matches the hash value $h(k)$ in $CEM_{3}$, and if yes, Bob decrypts the email $\setenc{M}^s_{k}$ and sends out a confirmation $\sym{EOR}_k$.
+
+\bigskip
+
+\begin{enumerate}
+    \item Write down the processes (successful \textbf{symbolic runs}) for Alice and Bob in the format that is given in week $8$'s slides. Remember a process consists of three types of actions $f(\_)$, $snd(\_)$, and $rcv(\_)$, in a sequential order. \\($2$ marks)
+    \item If the protocol successfully executes till the end, derive that $M$ is in the knowledge of Bob (B). You do not need to write down explicitly a knowledge set which may be infinite. You only need to show how step-by-step $B$ derives $M$, for example, $m\in D^i_B$ denotes that at the end of step $i$, term $m$ is in the knowledge of $B$. ($2$ marks)
+    \item If Alice fails to send out $CEM_{5}$, what strategy can Bob play to restore fairness? Design a two-step recovery sub-protocol for Bob in Alice-Bob notation between $B$ and $T$ in the same format as what are used for steps $CEM_{1}$--$CEM_{6}$.\\ (This $2$ marks will be given for free.)
+\end{enumerate}
+
+\paragraph{Answer.}
+Week~8 turns a message-exchange step
+\[
+    A_s \rightarrow A_r : (N_1,\ldots,N_t).\, M
+\]
+into actions with $\mathrm{seq}$. If you are the sender, that step is
+\[
+    f(N_1)\ldots f(N_t).\mathrm{snd}(M, A_r).
+\]
+If you are the receiver, it is just $\mathrm{rcv}(M)$. If you are neither, that step adds nothing to your run. In $CEM_2$ the fresh values are $(k).(sid)$ and $T$ is the one sending, so $f(k).f(sid)$ sits on $T$'s run. Alice and Bob never do an $f$ action.
+
+The three short names are really the signed terms below. I still write the short name in the runs, but each one means that term, so $\mathrm{analyz}$ can open it.
+\begin{align*}
+    \sym{EOO}_M &= \setenc{B;T;sid;h(k);\setenc{M}^s_{k}}^a_{K_A^{-1}},\\
+    \sym{EOR}_M &= \setenc{\sym{EOO}_M}^a_{K_B^{-1}},\\
+    \sym{EOR}_k &= \setenc{A;k;\setenc{M}^s_{k}}^a_{K_B^{-1}}.
+\end{align*}
+
+\begin{enumerate}
+    \item Alice sends or receives in every step from $CEM_1$ to $CEM_6$, so her run is
+    \begin{align*}
+        \text{A-run} = \langle
+            &\mathrm{snd}(A;B,\ T).\\
+            &\mathrm{rcv}(sid;\setenc{A;B;sid}^a_{K^{-1}_T};\setenc{k}^a_{K_A}).\\
+            &\mathrm{snd}(A;B;T;sid;h(k);\setenc{M}^s_{k};\\
+            &\qquad \sym{EOO}_M;\setenc{A;B;sid}^a_{K^{-1}_T},\ B).\\
+            &\mathrm{rcv}(\sym{EOR}_M).\\
+            &\mathrm{snd}(k,\ B).\\
+            &\mathrm{rcv}(\sym{EOR}_k)
+        \rangle.
+    \end{align*}
+    $CEM_2$ is only a receive for her, because she is not the sender there. Bob only shows up from $CEM_3$ on:
+    \begin{align*}
+        \text{B-run} = \langle
+            &\mathrm{rcv}(A;B;T;sid;h(k);\setenc{M}^s_{k};\\
+            &\qquad \sym{EOO}_M;\setenc{A;B;sid}^a_{K^{-1}_T}).\\
+            &\mathrm{snd}(\sym{EOR}_M,\ A).\\
+            &\mathrm{rcv}(k).\\
+            &\mathrm{snd}(\sym{EOR}_k,\ A)
+        \rangle.
+    \end{align*}
+    $M$ is just the email Alice is sending. Bob does not generate it, so there is no $f(M)$ on his run.
+
+    \item I call the four B-run actions $a_1, a_2, a_3, a_4$, in that order. The $i$ in $D^i_B$ is where he is in that run. The update is $D^i_B = \mathrm{close}(D^{i-1}_B \cup \mathrm{gets}(a_i))$. A send gives $\mathrm{gets} = \emptyset$. Receiving a term $t$ gives $\{t\}$. A fresh value $N$ gives $\{N\}$. Once you take $\mathrm{close}$, the set equals $\mathrm{analyz}$ of itself and $\mathrm{synth}$ of itself. I am not writing the sets out.
+
+    Bob's starting set is the week~8 initial dataset: the participant names, the public keys (the spec says everyone knows those), and his own private key. So $A, B, T, K_A, K_B, K_B^{-1}, K_T \in D^0_B$. $k$ and $sid$ are the fresh values $T$ makes in $CEM_2$, and $M$ is Alice's email, so $k \notin D^0_B$ and $M \notin D^0_B$. If $M$ were already in the initial set there would be nothing to derive, and he only gets $M$ by decrypting.
+
+    Let $m_3$ be the term he receives in $CEM_3$, and let $a_1 = \mathrm{rcv}(m_3)$. Then $\mathrm{gets}(a_1) = \{m_3\}$ and $D^1_B = \mathrm{close}(D^0_B \cup \{m_3\})$. That set equals $\mathrm{analyz}$ of itself, so a concatenation keeps getting split, and every piece of $m_3$ is in $D^1_B$. In particular
+    \[
+        \setenc{M}^s_{k} \in D^1_B
+        \qquad\text{and}\qquad
+        h(k) \in D^1_B.
+    \]
+    $\mathrm{analyz}$ has no rule that gets a preimage back out of a hash, and $\mathrm{synth}$ only builds $h(k)$ when you already have $k$. So $h(k)$ does not put $k$ in $D^1_B$. The symmetric rule only gives you the plaintext when the ciphertext and the key are both already in the set. He does not have the key yet, so $M \notin D^1_B$.
+
+    He can still open the signature. $K_A \in D^0_B$, and $D^1_B$ contains
+    \[
+        \sym{EOO}_M = \setenc{B;T;sid;h(k);\setenc{M}^s_{k}}^a_{K_A^{-1}}.
+    \]
+    The signature rule of $\mathrm{analyz}$ puts that signed body into $D^1_B$. It is the same pieces he already took out of $m_3$. There is still no $k$ in the clear, so $M$ is still not in $D^1_B$.
+
+    Next is the send $a_2 = \mathrm{snd}(\sym{EOR}_M, A)$. A send adds nothing, so $\mathrm{gets}(a_2) = \emptyset$ and $D^2_B = \mathrm{close}(D^1_B) = D^1_B$. The ciphertext $\setenc{M}^s_{k}$ is still in there.
+
+    Then $a_3 = \mathrm{rcv}(k)$, so $\mathrm{gets}(a_3) = \{k\}$ and $D^3_B = \mathrm{close}(D^2_B \cup \{k\})$. Now both $\setenc{M}^s_{k}$ and $k$ are in the set. The symmetric rule of $\mathrm{analyz}$ puts $M$ in, and since the closed set equals its $\mathrm{analyz}$ image,
+    \[
+        M \in D^3_B.
+    \]
+    That is the end of receiving $CEM_5$, before he sends $\sym{EOR}_k$.
+
+    \item Alice already has $\sym{EOR}_M$ from $CEM_4$, and then she does not send $CEM_5$. Bob has $\setenc{M}^s_{k}$ and $h(k)$, but he does not have $k$, so he cannot read $M$. $T$ made $k$ for this $sid$ in $CEM_2$ and still has it. What Bob can do is show $T$ the session together with his receipt, and get $k$ back from $T$. Both steps are just between $B$ and $T$. The reply sends $k$ in the clear, same as $CEM_5$, which is $A \rightarrow B : k$.
+    \begin{itemize}
+        \item[] ($CEM_{7}$)\ $B\rightarrow T: sid;\ h(k);\ \setenc{M}^s_{k};\ \sym{EOR}_M;\ \setenc{A;B;sid}^a_{K^{-1}_T}$
+        \item[] ($CEM_{8}$)\ $T\rightarrow B: k$
+    \end{itemize}
+    $T$ checks $\setenc{A;B;sid}^a_{K^{-1}_T}$, which is its own signature tying this $sid$ to $A$ and $B$. It opens $\sym{EOR}_M$ with $K_B$, then opens the $\sym{EOO}_M$ inside that with $K_A$. The signed body names this session, and it carries $h(k)$ and the ciphertext, so this really is the $B$ who committed. $T$ checks that signed hash against the $k$ it gave out for $sid$, and sends that $k$ back. Bob checks it against $h(k)$ from $CEM_3$, same as the main protocol, and decrypts $\setenc{M}^s_{k}$.
+\end{enumerate}
+
+\bigskip
+
+\paragraph{To submit your answer:} Upload a PDF file. You may either edit the tex document and then compile the file using latex/pdflatex, or by writing down your solution on a piece of paper and scan it. A scanned handwriting is acceptable only if the handwriting is readable by average humans and it is in the PDF format. Unreadable submissions will result in a $0$ mark for this assignment.
+
+
+
+\end{document}
