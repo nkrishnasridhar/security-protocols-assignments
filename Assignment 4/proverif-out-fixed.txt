@@ -1,0 +1,181 @@
+﻿Process 0 (that is, the initial process):
+{1}new Kas: key;
+{2}new Kbs: key;
+{3}insert keys(A,Kas);
+{4}insert keys(B,Kbs);
+(
+    {5}!
+    {6}let Kas_1: key = Kas in
+    {7}in(c, idB: host);
+    {8}new Na: nonce;
+    {9}out(c, (A,idB,Na));
+    {10}in(c, (mForA: bitstring,mForB: bitstring,nb: nonce));
+    {11}let (idb: bitstring,na2: bitstring,nb2: bitstring,k: bitstring) = sdec(mForA,key_to_bitstring(Kas_1)) in
+    {12}if ((idb = host_to_bitstring(idB)) && ((na2 = nonce_to_bitstring(Na)) && (nb2 = nonce_to_bitstring(nb)))) then
+    {13}if (idB = B) then
+        {14}event runningA(A,idB,Na,nb,k);
+        {15}event endA(A,idB,Na,nb,k);
+        {16}out(c, senc(secretKab,k));
+        {17}out(c, (mForB,senc(nonce_to_bitstring(nb),k)))
+    else
+        {18}out(c, (mForB,senc(nonce_to_bitstring(nb),k)))
+) | (
+    {19}!
+    {20}let Kbs_1: key = Kbs in
+    {21}in(c, (idA: host,idMe: host,na: nonce));
+    {22}if (idMe = B) then
+    {23}new Nb: nonce;
+    {24}if (idA = A) then
+    (
+        {25}event runningB(idA,B,na,Nb);
+        {26}let Nb_1: nonce = Nb in
+        {27}out(c, (B,senc((host_to_bitstring(idA),nonce_to_bitstring(na),nonce_to_bitstring(Nb_1)),key_to_bitstring(Kbs_1)),Nb_1));
+        {28}in(c, (ticket: bitstring,confirm: bitstring));
+        {29}let (ida2: bitstring,na2_1: bitstring,nb_in: bitstring,k_1: bitstring) = sdec(ticket,key_to_bitstring(Kbs_1)) in
+        {30}if ((ida2 = host_to_bitstring(idA)) && ((na2_1 = nonce_to_bitstring(na)) && (nb_in = nonce_to_bitstring(Nb_1)))) then
+        {31}let nb2_1: bitstring = sdec(confirm,k_1) in
+        {32}if (nb2_1 = nonce_to_bitstring(Nb_1)) then
+        {33}if (idA = A) then
+        {34}event endB(idA,B,na,Nb_1,k_1);
+        {35}out(c, senc(secretKab,k_1))
+    )
+    else
+        {36}let Nb_2: nonce = Nb in
+        {37}out(c, (B,senc((host_to_bitstring(idA),nonce_to_bitstring(na),nonce_to_bitstring(Nb_2)),key_to_bitstring(Kbs_1)),Nb_2));
+        {38}in(c, (ticket_1: bitstring,confirm_1: bitstring));
+        {39}let (ida2_1: bitstring,na2_2: bitstring,nb_in_1: bitstring,k_2: bitstring) = sdec(ticket_1,key_to_bitstring(Kbs_1)) in
+        {40}if ((ida2_1 = host_to_bitstring(idA)) && ((na2_2 = nonce_to_bitstring(na)) && (nb_in_1 = nonce_to_bitstring(Nb_2)))) then
+        {41}let nb2_2: bitstring = sdec(confirm_1,k_2) in
+        {42}if (nb2_2 = nonce_to_bitstring(Nb_2)) then
+        {43}if (idA = A) then
+        {44}event endB(idA,B,na,Nb_2,k_2);
+        {45}out(c, senc(secretKab,k_2))
+) | (
+    {46}!
+    {47}in(c, (idB_1: host,cipher: bitstring,nb_1: nonce));
+    {54}get keys(=idB_1,kbs: key) in
+    {48}let (idAbs: bitstring,nabs: bitstring,nbbs: bitstring) = sdec(cipher,key_to_bitstring(kbs)) in
+    {49}if (nbbs = nonce_to_bitstring(nb_1)) then
+    {50}let host_to_bitstring(idA_1: host) = idAbs in
+    {53}get keys(=idA_1,kas: key) in
+    {51}new Kab: key;
+    {52}out(c, (senc((host_to_bitstring(idB_1),nabs,nbbs,key_to_bitstring(Kab)),key_to_bitstring(kas)),senc((host_to_bitstring(idA_1),nabs,nbbs,key_to_bitstring(Kab)),key_to_bitstring(kbs)),nb_1))
+) | (
+    {55}!
+    {56}in(c, (h: host,k_3: key));
+    {57}if ((h Γëá A) && (h Γëá B)) then
+    {58}insert keys(h,k_3)
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}new Kas: key;
+{2}new Kbs: key;
+{3}insert keys(A,Kas);
+{4}insert keys(B,Kbs);
+(
+    {5}!
+    {7}in(c, idB: host);
+    {8}new Na: nonce;
+    {9}out(c, (A,idB,Na));
+    {10}in(c, (mForA: bitstring,mForB: bitstring,nb: nonce));
+    {6}let Kas_1: key = Kas in
+    {11}let (idb: bitstring,na2: bitstring,nb2: bitstring,k: bitstring) = sdec(mForA,key_to_bitstring(Kas_1)) in
+    {12}if ((idb = host_to_bitstring(idB)) && ((na2 = nonce_to_bitstring(Na)) && (nb2 = nonce_to_bitstring(nb)))) then
+    {13}if (idB = B) then
+        {14}event runningA(A,idB,Na,nb,k);
+        {15}event endA(A,idB,Na,nb,k);
+        {16}out(c, senc(secretKab,k));
+        {17}out(c, (mForB,senc(nonce_to_bitstring(nb),k)))
+    else
+        {18}out(c, (mForB,senc(nonce_to_bitstring(nb),k)))
+) | (
+    {19}!
+    {21}in(c, (idA: host,idMe: host,na: nonce));
+    {22}if (idMe = B) then
+    {23}new Nb: nonce;
+    {20}let Kbs_1: key = Kbs in
+    {24}if (idA = A) then
+    (
+        {25}event runningB(idA,B,na,Nb);
+        {26}let Nb_1: nonce = Nb in
+        {27}out(c, (B,senc((host_to_bitstring(idA),nonce_to_bitstring(na),nonce_to_bitstring(Nb_1)),key_to_bitstring(Kbs_1)),Nb_1));
+        {28}in(c, (ticket: bitstring,confirm: bitstring));
+        {29}let (ida2: bitstring,na2_1: bitstring,nb_in: bitstring,k_1: bitstring) = sdec(ticket,key_to_bitstring(Kbs_1)) in
+        {30}if ((ida2 = host_to_bitstring(idA)) && ((na2_1 = nonce_to_bitstring(na)) && (nb_in = nonce_to_bitstring(Nb_1)))) then
+        {31}let nb2_1: bitstring = sdec(confirm,k_1) in
+        {32}if (nb2_1 = nonce_to_bitstring(Nb_1)) then
+        {33}if (idA = A) then
+        {34}event endB(idA,B,na,Nb_1,k_1);
+        {35}out(c, senc(secretKab,k_1))
+    )
+    else
+        {36}let Nb_2: nonce = Nb in
+        {37}out(c, (B,senc((host_to_bitstring(idA),nonce_to_bitstring(na),nonce_to_bitstring(Nb_2)),key_to_bitstring(Kbs_1)),Nb_2));
+        {38}in(c, (ticket_1: bitstring,confirm_1: bitstring));
+        {39}let (ida2_1: bitstring,na2_2: bitstring,nb_in_1: bitstring,k_2: bitstring) = sdec(ticket_1,key_to_bitstring(Kbs_1)) in
+        {40}if ((ida2_1 = host_to_bitstring(idA)) && ((na2_2 = nonce_to_bitstring(na)) && (nb_in_1 = nonce_to_bitstring(Nb_2)))) then
+        {41}let nb2_2: bitstring = sdec(confirm_1,k_2) in
+        {42}if (nb2_2 = nonce_to_bitstring(Nb_2)) then
+        {43}if (idA = A) then
+        {44}event endB(idA,B,na,Nb_2,k_2);
+        {45}out(c, senc(secretKab,k_2))
+) | (
+    {46}!
+    {47}in(c, (idB_1: host,cipher: bitstring,nb_1: nonce));
+    {54}get keys(=idB_1,kbs: key) in
+    {48}let (idAbs: bitstring,nabs: bitstring,nbbs: bitstring) = sdec(cipher,key_to_bitstring(kbs)) in
+    {49}if (nbbs = nonce_to_bitstring(nb_1)) then
+    {50}let host_to_bitstring(idA_1: host) = idAbs in
+    {53}get keys(=idA_1,kas: key) in
+    {51}new Kab: key;
+    {52}out(c, (senc((host_to_bitstring(idB_1),nabs,nbbs,key_to_bitstring(Kab)),key_to_bitstring(kas)),senc((host_to_bitstring(idA_1),nabs,nbbs,key_to_bitstring(Kab)),key_to_bitstring(kbs)),nb_1))
+) | (
+    {55}!
+    {56}in(c, (h: host,k_3: key));
+    {57}if ((h Γëá A) && (h Γëá B)) then
+    {58}insert keys(h,k_3)
+)
+
+-- Query not attacker_bitstring(secretKab[]) in process 1.
+Translating the process into Horn clauses...
+Completing...
+ok, secrecy assumption verified: fact unreachable attacker_key(Kas[])
+ok, secrecy assumption verified: fact unreachable attacker_key(Kbs[])
+Starting query not attacker_bitstring(secretKab[])
+RESULT not attacker_bitstring(secretKab[]) is true.
+-- Query event(endA(a,b,na_1,nb_2,k_4)) ==> event(runningB(a,b,na_1,nb_2)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+ok, secrecy assumption verified: fact unreachable attacker_key(Kas[])
+ok, secrecy assumption verified: fact unreachable attacker_key(Kbs[])
+Starting query event(endA(a,b,na_1,nb_2,k_4)) ==> event(runningB(a,b,na_1,nb_2))
+goal reachable: b-event(runningB(A[],B[],Na_1,Nb_3)) -> event(endA(A[],B[],Na_1,Nb_3,key_to_bitstring(Kab_1)))
+Abbreviations:
+Na_1 = Na[idB = B[],!1 = @sid]
+Nb_3 = Nb[na = Na_1,idMe = B[],idA = A[],!1 = @sid_1]
+Kab_1 = Kab[kas = Kas[],kbs = Kbs[],nb_1 = Nb_3,cipher = senc((host_to_bitstring(A[]),nonce_to_bitstring(Na_1),nonce_to_bitstring(Nb_3)),key_to_bitstring(Kbs[])),idB_1 = B[],!1 = @sid_2]
+RESULT event(endA(a,b,na_1,nb_2,k_4)) ==> event(runningB(a,b,na_1,nb_2)) is true.
+-- Query event(endB(a,b,na_1,nb_2,k_4)) ==> event(runningA(a,b,na_1,nb_2,k_4)) in process 1.
+Translating the process into Horn clauses...
+Completing...
+ok, secrecy assumption verified: fact unreachable attacker_key(Kas[])
+ok, secrecy assumption verified: fact unreachable attacker_key(Kbs[])
+Starting query event(endB(a,b,na_1,nb_2,k_4)) ==> event(runningA(a,b,na_1,nb_2,k_4))
+goal reachable: b-event(runningA(A[],B[],Na_1,Nb_3,key_to_bitstring(Kab_1))) -> event(endB(A[],B[],Na_1,Nb_3,key_to_bitstring(Kab_1)))
+Abbreviations:
+Na_1 = Na[idB = B[],!1 = @sid]
+Nb_3 = Nb[na = Na_1,idMe = B[],idA = A[],!1 = @sid_1]
+Kab_1 = Kab[kas = Kas[],kbs = Kbs[],nb_1 = Nb_3,cipher = senc((host_to_bitstring(A[]),nonce_to_bitstring(Na_1),nonce_to_bitstring(Nb_3)),key_to_bitstring(Kbs[])),idB_1 = B[],!1 = @sid_2]
+RESULT event(endB(a,b,na_1,nb_2,k_4)) ==> event(runningA(a,b,na_1,nb_2,k_4)) is true.
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker_bitstring(secretKab[]) is true.
+
+Query event(endA(a,b,na_1,nb_2,k_4)) ==> event(runningB(a,b,na_1,nb_2)) is true.
+
+Query event(endB(a,b,na_1,nb_2,k_4)) ==> event(runningA(a,b,na_1,nb_2,k_4)) is true.
+
+--------------------------------------------------------------
+

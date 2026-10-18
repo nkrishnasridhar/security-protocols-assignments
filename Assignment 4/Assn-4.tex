@@ -1,0 +1,150 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\newcommand{\enc}[2]{\{#1\}_{#2}}
+
+\title{COSC437 Security Protocols: Assignment 4}
+\author{Name: Navaneethakrishna Sridhar \\ Student ID: 12590145}
+\date{Due 18 Oct 2026}
+
+\begin{document}
+\maketitle
+
+% The original protocol listing is excluded from the word count.
+% Check it with:  python wordcount.py Assn-4.tex
+% texcount is not installed here. wordcount.py drops the region between
+% %TC:ignore and %TC:endignore, plus comments and command names.
+% Last run of that script: 1489 words.
+
+\section{The protocol}
+
+A and B authenticate each other and get a fresh session key $Kab$. A trusted server $S$ already shares $Kas$ with A and $Kbs$ with B, and A starts. The assignment asks for secrecy of $Kab$, A's noninjective agreement of B on $Na$, $Nb$ and $Kab$, and B's noninjective agreement of A on the same values.
+
+%TC:ignore
+\begin{align*}
+(P1)\;& A \rightarrow B : (Na).\; A, B, Na \\
+(P2)\;& B \rightarrow S : (Nb).\; B,\; \enc{A, Na}{Kbs},\; Nb \\
+(P3)\;& S \rightarrow A : (Kab).\; \enc{B, Na, Kab}{Kas},\; \enc{A, Kab}{Kbs},\; Nb \\
+(P4)\;& A \rightarrow B : \enc{A, Kab}{Kbs},\; \enc{Nb}{Kab}
+\end{align*}
+%TC:endignore
+
+I read each step the week~8 way. The sender does a fresh name, then a send, and the other side just receives. The ciphertext under $Kbs$ is opaque to A, so she only forwards it, as B does in Otway--Rees. $Nb$ in P3 is clear.
+
+\section{The model}
+
+The original protocol is \texttt{protocol.pv}. I ran it as \texttt{proverif protocol.pv} under ProVerif~2.05. The file follows the course scripts: a public channel, replicated roles, a key table, and correspondence queries.
+
+\paragraph{Types.}
+I set \texttt{ignoreTypes = attacker}, same as the course Needham--Schroeder script. Manual section~6.6.2 says the default, \texttt{ignoreTypes = true}, drops types during the search and erases type converters, and that this often fails to terminate. The same section says \texttt{ignoreTypes = attacker} is the old name of \texttt{ignoreTypes = false}, so the file is still typechecked and honest patterns keep their types. A pattern that expects a key then rejects a nonce, which would hide the mix-up the assignment points out. So I convert hosts, nonces and keys to \texttt{bitstring} before encryption, and \texttt{senc} takes a bitstring key. Inside a ciphertext they are the same type (manual section~4.1.2).
+
+\paragraph{Attacker and checks.}
+The channel is public, the week~9 network attacker. I create $Kas$ and $Kbs$ with \texttt{new} and never send them. $S$ keeps them in a table. A replicated process inserts a key for any host other than A and B, the dishonest user from the course script. A only starts and B only answers, but replication still allows concurrent sessions. I only emit the end events and the secrecy payload when A is talking to B. A dishonest partner can still run, but that session is outside the queries: $S$ would encrypt $Kab$ under a key the attacker chose.
+
+The week~9 Otway--Rees process writes the tests the notation leaves out, so I did the same. A checks the partner and $Na$ under $Kas$, and forwards the other ciphertext unopened. B checks that P1 is for him, that the ticket names this initiator, and that the confirmation opens to his $Nb$. He uses that bitstring as a key, with no further test. $S$ decrypts under the claimed sender's key, encrypts for the identity inside, and forwards $Nb$.
+
+\paragraph{Events and secrecy.}
+Week~10's ``A noninjective agreement of B'' means that when A finishes a run she thinks is with B, B has already been running with A and they agree on the data. The handshake slide puts the start event on the authenticated party. Injective agreement was not asked for, so I used \texttt{event}.
+
+B learns $Kab$ only from P4, A's last send, so a start event that already contains $Kab$ is false on an honest run. I emit \texttt{runningB} when B accepts P1 and creates $Nb$. \texttt{endA}, when A accepts P3, also carries $Kab$:
+\[
+\texttt{event(endA}(a,b,na,nb,k)\texttt{)} \Longrightarrow \texttt{event(runningB}(a,b,na,nb)\texttt{)}.
+\]
+So the second query is agreement on the identities and the nonces. The key is property~3 and the secrecy query. For property~3, A already has all three values before P4, so I emit \texttt{runningA} then and \texttt{endB} after B checks the ticket and the confirmation:
+\[
+\texttt{event(endB}(a,b,na,nb,k)\texttt{)} \Longrightarrow \texttt{event(runningA}(a,b,na,nb,k)\texttt{)}.
+\]
+$Kab$ is a \texttt{new} inside a replicated process, so \texttt{query attacker(Kab)} cannot name it. Same as the course script, a private free name \texttt{secretKab} is encrypted under the bitstring an honest party has just accepted. \texttt{not attacker(new Kas)} and \texttt{not attacker(new Kbs)} are the long-term assumptions from manual section~6.7.2.
+
+\section{What ProVerif said}
+
+The summary for \texttt{protocol.pv} is:
+
+\begin{quote}\raggedright\small
+\texttt{Query not attacker\_bitstring(secretKab[]) is false.}\\[0.3em]
+\texttt{Query event(endA(a,b,na\_1,nb\_2,k\_4))}\\
+\texttt{\ ==> event(runningB(a,b,na\_1,nb\_2)) is false.}\\[0.3em]
+\texttt{Query event(endB(a,b,na\_1,nb\_2,k\_4))}\\
+\texttt{\ ==> event(runningA(a,b,na\_1,nb\_2,k\_4)) is false.}
+\end{quote}
+
+That run also says the assumptions on $Kas$ and $Kbs$ hold. I write $A[E] \rightarrow B : M$ when $E$ sends $M$ to B and pretends it came from A.
+
+\paragraph{Secrecy.}
+Two copies of B run. A and $S$ do not. $E$ picks both initiator nonces.
+
+\begin{align*}
+&A[E] \rightarrow B : A, B, Na \\
+&B \rightarrow S[E] : B,\; \enc{A, Na}{Kbs},\; Nb \\
+&A[E] \rightarrow B : A, B, Na' \\
+&B \rightarrow S[E] : B,\; \enc{A, Na'}{Kbs},\; Nb' \\
+&A[E] \rightarrow B : \enc{A, Na}{Kbs},\; \enc{Nb'}{Na}
+\end{align*}
+
+The last line goes to the second copy. $\enc{A, Na}{Kbs}$ is a pair of bitstrings under $Kbs$, the same shape as the ticket, so B reads the key as $Na$. $E$ could build $\enc{Nb'}{Na}$ because he chose $Na$ and he saw $Nb'$. B encrypts \texttt{secretKab} under $Na$, which is the model's secrecy check. The attacker decrypts that with \texttt{nonce\_to\_bitstring(a)} and gets \texttt{secretKab}.
+
+\paragraph{A's agreement of B.}
+$E$ replaces $Nb$. $Ne$ and $Ne'$ are nonces he chose ($a\_2$ and $a\_5$ in the trace), and $X$ is just some bitstring.
+
+\begin{align*}
+&A \rightarrow E : A, B, Na \\
+&A[E] \rightarrow B : A, B, Na \\
+&B \rightarrow E : B,\; \enc{A, Na}{Kbs},\; Nb \\
+&B[E] \rightarrow S : B,\; \enc{A, Na}{Kbs},\; Ne \\
+&S \rightarrow E : \enc{B, Na, Kab}{Kas},\; \enc{A, Kab}{Kbs},\; Ne \\
+&S[E] \rightarrow A : \enc{B, Na, Kab}{Kas},\; X,\; Ne'
+\end{align*}
+
+A's test is the partner and $Na$, both still intact, so she accepts $Ne'$ and runs \texttt{endA(A, B, Na, Ne', Kab)}. B's event is \texttt{runningB(A, B, Na, Nb)}. $Nb$ is outside the $Kas$ ciphertext.
+
+\paragraph{B's agreement of A.}
+$Nb$ is the first copy's nonce and $Nb'$ the second. $E$ chooses $Na'$ and $Ne$.
+
+\begin{align*}
+&A \rightarrow E : A, B, Na \\
+&A[E] \rightarrow B : A, B, Na \\
+&B \rightarrow E : B,\; \enc{A, Na}{Kbs},\; Nb \\
+&A[E] \rightarrow B : A, B, Na' \\
+&B \rightarrow E : B,\; \enc{A, Na'}{Kbs},\; Nb' \\
+&B[E] \rightarrow S : B,\; \enc{A, Na}{Kbs},\; Ne \\
+&S \rightarrow E : \enc{B, Na, Kab}{Kas},\; \enc{A, Kab}{Kbs},\; Ne \\
+&S[E] \rightarrow A : \enc{B, Na, Kab}{Kas},\; X,\; Nb' \\
+&A \rightarrow E : X,\; \enc{Nb'}{Kab} \\
+&A[E] \rightarrow B : \enc{A, Kab}{Kbs},\; \enc{Nb'}{Kab}
+\end{align*}
+
+The last line goes to the second copy. The ticket carries neither nonce, so that copy accepts a ticket from the other run, and A built $\enc{Nb'}{Kab}$ because she was shown $Nb'$. B runs \texttt{endB(A, B, Na', Nb', Kab)}. The only \texttt{runningA} is \texttt{runningA(A, B, Na, Nb', Kab)}.
+
+In week~10, noninjective agreement is above weak agreement and aliveness, and below injective agreement, so these traces rule out injective agreement as well. B had run with A and $Na$ in the second trace, but with another $Nb$. A had run in the third, but with another initiator nonce.
+
+\section{The fix}
+
+I fixed it the way week~10 fixes Needham--Schroeder: put the swapped or confused value into a ciphertext the recipient checks. That change is only in \texttt{protocol\_fixed.pv}.
+
+\begin{align*}
+(P2)\;& B \rightarrow S : (Nb).\; B,\; \enc{A, Na, Nb}{Kbs},\; Nb \\
+(P3)\;& S \rightarrow A : (Kab).\; \enc{B, Na, Nb, Kab}{Kas},\; \enc{A, Na, Nb, Kab}{Kbs},\; Nb \\
+(P4)\;& A \rightarrow B : \enc{A, Na, Nb, Kab}{Kbs},\; \enc{Nb}{Kab}
+\end{align*}
+
+$S$ continues only when the clear $Nb$ matches the copy inside B's ciphertext. A checks that copy against the clear field, and B checks that the ticket carries this run's $Na$ and $Nb$. The request is a triple and the ticket a 4-tuple, so the secrecy replay no longer matches. The checks on $Na$ and $Nb$ stop the other two.
+
+\texttt{proverif protocol\_fixed.pv} gives:
+
+\begin{quote}\raggedright\small
+\texttt{Query not attacker\_bitstring(secretKab[]) is true.}\\[0.3em]
+\texttt{Query event(endA(a,b,na\_1,nb\_2,k\_4))}\\
+\texttt{\ ==> event(runningB(a,b,na\_1,nb\_2)) is true.}\\[0.3em]
+\texttt{Query event(endB(a,b,na\_1,nb\_2,k\_4))}\\
+\texttt{\ ==> event(runningA(a,b,na\_1,nb\_2,k\_4)) is true.}
+\end{quote}
+
+This run verifies the long-term assumptions as well.
+
+\section{What the model does not cover}
+
+The attacker is the Dolev--Yao attacker from week~8, and I did not test week~10's recentness axis. Noninjective agreement lets one run of B cover several finishes of A. With types checked, an ill-typed host or nonce in a position that still has its own type is outside the search. The secrecy query is the key an honest A or B accepts, rather than a $Kab$ encrypted for a dishonest registered user. \texttt{runningB} leaves out $Kab$, so the true second query says B had started with those identities and nonces. The shared key is the third query.
+
+\end{document}

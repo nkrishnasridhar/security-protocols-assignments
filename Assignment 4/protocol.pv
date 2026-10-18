@@ -1,0 +1,252 @@
+(*
+  COSC437 Assignment 4. Original protocol, as specified.
+
+  (P1) A -> B : (Na). A; B; Na
+  (P2) B -> S : (Nb). B; {A; Na}_Kbs; Nb
+  (P3) S -> A : (Kab). {B; Na; Kab}_Kas; {A; Kab}_Kbs; Nb
+  (P4) A -> B : {A; Kab}_Kbs; {Nb}_Kab
+
+  Week 8 projection (seq). f is fresh generation, snd/rcv are the
+  message of that step. A party who is neither sender nor receiver
+  is absent from the step.
+
+  A-run:
+    f(Na). snd(A; B; Na, B).
+    rcv({B; Na; Kab}_Kas; {A; Kab}_Kbs; Nb).
+    snd({A; Kab}_Kbs; {Nb}_Kab, B)
+
+  B-run:
+    rcv(A; B; Na). f(Nb).
+    snd(B; {A; Na}_Kbs; Nb, S).
+    rcv({A; Kab}_Kbs; {Nb}_Kab)
+
+  S-run:
+    rcv(B; {A; Na}_Kbs; Nb). f(Kab).
+    snd({B; Na; Kab}_Kas; {A; Kab}_Kbs; Nb, A)
+
+  Week 8 view of the ciphertexts:
+    {A; Na}_Kbs and {A; Kab}_Kbs are transparent to B and S, opaque to A
+    (A only forwards the second one, as in the Otway-Rees example).
+    {B; Na; Kab}_Kas is transparent to A and S, and B never receives it.
+    Nb in P3 is clear, so A cannot test it against a value she chose.
+
+  Run with:  proverif protocol.pv
+*)
+
+(*
+  Types. ProVerif 2.05 manual, section 6.6.2: the default is
+  ignoreTypes = true, which drops types during attack search and
+  removes typeConverter functions. The same section says
+  ignoreTypes = attacker is the old name for ignoreTypes = false:
+  the input must be well typed, and honest patterns keep their types.
+  The course Needham-Schroeder file sets this, with the comment that
+  ignoring types loops.
+
+  Because honest patterns stay typed, a pattern "let (id, k: key) = ..."
+  would refuse a nonce in the key position, and the search could not
+  see the confusion the assignment points out (a nonce, a key, and an
+  id are all bitstrings). Section 4.1.2: a typeConverter is a data
+  constructor that changes type and nothing else, and when types are
+  not ignored it is NOT erased. Encrypting the converted bitstrings
+  puts the nonce, the key, and the id in the same sort inside a
+  ciphertext, which is what lets a receiver treat them alike.
+  We do not set ignoreTypes = true.
+*)
+set ignoreTypes = attacker.
+
+(* Week 9: one public channel, so the attacker is the network. *)
+free c: channel.
+
+type host.
+type nonce.
+type key.
+
+fun host_to_bitstring(host): bitstring [data, typeConverter].
+fun nonce_to_bitstring(nonce): bitstring [data, typeConverter].
+fun key_to_bitstring(key): bitstring [data, typeConverter].
+
+(* Week 9 symmetric encryption. The key argument is bitstring, not key. *)
+fun senc(bitstring, bitstring): bitstring.
+reduc forall m: bitstring, k: bitstring; sdec(senc(m, k), k) = m.
+
+(* Honest identities. Free, so the attacker knows the names. *)
+free A, B: host.
+
+(*
+  Long-term keys are created by new in the main process and are never
+  output. Manual section 6.7.2: not attacker(new n) is checked, so a
+  wrong assumption cannot make a later proof go through.
+*)
+not attacker(new Kas).
+not attacker(new Kbs).
+
+(*
+  Server key table, as in the course Needham-Schroeder model
+  (manual section 4.1.5). processK below registers any host other
+  than A and B, so the attacker can be a legitimate user with a key
+  he chose. S looks keys up with get.
+*)
+table keys(host, key).
+
+(*
+  Secrecy of the session key a honest party adopts.
+  Kab is created by new inside a replicated server, so it is not in
+  scope at a top-level query attacker(Kab). The course Needham-Schroeder
+  file tests a fresh value by encrypting a private free name under it.
+  secretKab is emitted only for a session between honest A and honest B.
+*)
+free secretKab: bitstring [private].
+query attacker(secretKab).
+
+(*
+  Week 10. "A noninjective agreement of B" : whenever A finishes a run
+  apparently with B, B has already been running apparently with A, and
+  they agree on the data. The end event is on the party who finishes;
+  the running event is on the other party, and it has to come first
+  (handshake slide: started before completed).
+
+  B learns Kab only from P4, which is A's last action, so a runningB
+  event that already contains Kab sits after every endA. That query
+  is false on the honest trace for an ordering reason. runningB is
+  therefore emitted when B accepts P1 and creates Nb, which is when
+  B has actually committed to (A, Na, Nb), and it precedes endA.
+  Kab is carried on endA. Agreement on the key is property 3 together
+  with the secrecy query.
+
+  "B noninjective agreement of A": A has Na, Nb, and Kab before she
+  sends P4, and B finishes only after he checks P4. runningA is
+  emitted before that send; endB after the checks.
+
+  Roles are fixed (A initiates, B responds), so the honest pair is
+  initiator A with responder B. The Needham-Schroeder sample uses
+  "A or B" because either host can play either role. Using that test
+  unchanged would let B finish a run with himself and then demand a
+  matching runningA, which this process never emits.
+
+  Injective agreement is the next step up in Week 10 and is not asked
+  for, so the queries use event rather than inj-event.
+*)
+event runningB(host, host, nonce, nonce).
+event endA(host, host, nonce, nonce, bitstring).
+event runningA(host, host, nonce, nonce, bitstring).
+event endB(host, host, nonce, nonce, bitstring).
+
+query a: host, b: host, na: nonce, nb: nonce, k: bitstring;
+  event(endA(a, b, na, nb, k)) ==> event(runningB(a, b, na, nb)).
+
+query a: host, b: host, na: nonce, nb: nonce, k: bitstring;
+  event(endB(a, b, na, nb, k)) ==> event(runningA(a, b, na, nb, k)).
+
+(*
+  Role A (initiator). Kas is A's long-term key (initial knowledge).
+  The attacker chooses the partner, as in the course sample.
+  Checks, Week 9 Otway-Rees: after decrypting under Kas, the identity
+  is the intended partner and the nonce is Na. Those fields are in
+  the ciphertext so that A can test them. The Kbs blob is not opened.
+  Nb is not tested: it arrives in the clear and A has no prior copy.
+*)
+let processA(Kas: key) =
+  in(c, idB: host);
+  new Na: nonce;
+  out(c, (A, idB, Na));
+  in(c, (mForA: bitstring, mForB: bitstring, nb: nonce));
+  let (idb: bitstring, na2: bitstring, k: bitstring) =
+      sdec(mForA, key_to_bitstring(Kas)) in
+  if idb = host_to_bitstring(idB) && na2 = nonce_to_bitstring(Na) then
+  if idB = B then
+  (
+    event runningA(A, idB, Na, nb, k);
+    event endA(A, idB, Na, nb, k);
+    out(c, senc(secretKab, k));
+    out(c, (mForB, senc(nonce_to_bitstring(nb), k)))
+  )
+  else
+  (
+    out(c, (mForB, senc(nonce_to_bitstring(nb), k)))
+  ).
+
+(*
+  Role B (responder). Kbs is B's long-term key.
+  P1 must be addressed to him. He does not otherwise test the claimed
+  initiator: the attacker is allowed to name A.
+  On P4 he opens the ticket under Kbs and requires the identity to be
+  the initiator of this run, then opens the confirmation under the
+  bitstring he just extracted and requires his own Nb.
+  There is no test that this bitstring is a key rather than a nonce,
+  and no test that it differs from Na. That would be a repair.
+*)
+(*
+  The rest of B, after Nb exists. Split out so the runningB event can
+  be skipped for a dishonest initiator without dropping the rest of
+  the role: in the grammar, the process after "event e;" is part of
+  that event, so it would otherwise sit inside the then-branch.
+*)
+let processBcont(Kbs: key, idA: host, na: nonce, Nb: nonce) =
+  out(c, (B, senc((host_to_bitstring(idA), nonce_to_bitstring(na)),
+                  key_to_bitstring(Kbs)), Nb));
+  in(c, (ticket: bitstring, confirm: bitstring));
+  let (ida2: bitstring, k: bitstring) =
+      sdec(ticket, key_to_bitstring(Kbs)) in
+  if ida2 = host_to_bitstring(idA) then
+  let nb2 = sdec(confirm, k) in
+  if nb2 = nonce_to_bitstring(Nb) then
+  if idA = A then
+  (
+    event endB(idA, B, na, Nb, k);
+    out(c, senc(secretKab, k))
+  ).
+
+let processB(Kbs: key) =
+  in(c, (idA: host, idMe: host, na: nonce));
+  if idMe = B then
+  new Nb: nonce;
+  if idA = A then
+  (
+    event runningB(idA, B, na, Nb);
+    processBcont(Kbs, idA, na, Nb)
+  )
+  else
+    processBcont(Kbs, idA, na, Nb).
+
+(*
+  Role S. The claimed sender selects the decryption key (table lookup).
+  The host inside the ciphertext selects the other key. S does not test
+  Na or Nb: both are fresh values S has never seen. Nb is forwarded
+  unchanged. Kab is fresh.
+*)
+let processS() =
+  in(c, (idB: host, cipher: bitstring, nb: nonce));
+  get keys(=idB, kbs) in
+  let (idAbs: bitstring, nabs: bitstring) =
+      sdec(cipher, key_to_bitstring(kbs)) in
+  let host_to_bitstring(idA) = idAbs in
+  get keys(=idA, kas) in
+  new Kab: key;
+  out(c, (senc((host_to_bitstring(idB), nabs, key_to_bitstring(Kab)),
+               key_to_bitstring(kas)),
+          senc((host_to_bitstring(idA), key_to_bitstring(Kab)),
+               key_to_bitstring(kbs)),
+          nb)).
+
+(* Dishonest users. A key for A or B is refused, so Kas and Kbs stay secret. *)
+let processK() =
+  in(c, (h: host, k: key));
+  if h <> A && h <> B then
+  insert keys(h, k).
+
+(*
+  Week 9 precedence: "!" binds less tightly than "|", and the course
+  sample parenthesises each replicated role. Unbounded sessions, so
+  the attacker can open concurrent runs (Week 10's two-session attack).
+*)
+process
+  new Kas: key;
+  new Kbs: key;
+  insert keys(A, Kas);
+  insert keys(B, Kbs);
+  (
+    (!processA(Kas)) |
+    (!processB(Kbs)) |
+    (!processS) |
+    (!processK)
+  )
